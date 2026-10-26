@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Capture the Sky — Pimpri Chinchwad Science Park</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================ -->
+<!--  SETUP: paste your Firebase config here (see SETUP_GUIDE.md)  -->
+<!-- ============================================================ -->
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyC2U5AW64qzJDYliACxlwkHO3t_zSFwQ9M",
+    authDomain: "astro-fest-photography.firebaseapp.com",
+    projectId: "astro-fest-photography",
+    appId: "1:956957907521:web:3eb9787d7f5a99580cc4c0"
+  };
+  const COLLECTION_NAME = "skyPhotos";
+</script>
+<!-- ============================================================ -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-firestore-compat.min.js"></script>
+
+<style>
+  :root{
+    --navy:#0a0e2e;
+    --navy-2:#161c47;
+    --dusk:#3a2a6e;
+    --gold:#f4b942;
+    --gold-2:#ff8a5c;
+    --gold-dim:#c99a3e;
+    --cloud:#f4f2ec;
+    --mist:#aab0d6;
+    --ok:#7bd68a;
+    --err:#e9707a;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    min-height:100%;
+    background:
+      radial-gradient(ellipse 60% 40% at 18% 8%, rgba(244,185,66,.16) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 35% at 88% 4%, rgba(255,138,92,.10) 0%, transparent 55%),
+      radial-gradient(ellipse at 20% 0%, #23306e 0%, transparent 55%),
+      radial-gradient(ellipse at 85% 15%, #2a1f5e 0%, transparent 45%),
+      linear-gradient(180deg, var(--navy-2) 0%, var(--navy) 70%);
+    background-attachment:fixed;
+    color:var(--cloud);
+    font-family:'IBM Plex Sans', sans-serif;
+    display:flex;
+    justify-content:center;
+    padding:26px 18px 40px;
+    position:relative;
+    overflow-x:hidden;
+  }
+
+  /* ---------- animated space background ---------- */
+  .sky-deco{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden;}
+  .sky-deco > *{position:absolute;}
+
+  /* twinkling stars (created by the script below) */
+  .stars span{
+    position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;
+    opacity:.5; animation:twinkle 3.5s ease-in-out infinite;
+  }
+  @keyframes twinkle{0%,100%{opacity:.15}50%{opacity:.9}}
+
+  /* soft nebula clouds drifting slowly */
+  .nebula{border-radius:50%;}
+  .nebula.n1{
+    width:120vmax;height:120vmax;left:-60vmax;bottom:-70vmax;
+    background:radial-gradient(circle, rgba(126,74,214,.30) 0%, rgba(126,74,214,.10) 35%, transparent 65%);
+    animation:nebulaDrift 46s ease-in-out infinite alternate;
+  }
+  .nebula.n2{
+    width:100vmax;height:100vmax;right:-55vmax;top:32%;
+    background:radial-gradient(circle, rgba(46,170,190,.20) 0%, rgba(230,90,160,.09) 40%, transparent 65%);
+    animation:nebulaDrift 58s ease-in-out infinite alternate-reverse;
+  }
+  @keyframes nebulaDrift{
+    from{transform:translate(0,0) scale(1);}
+    to{transform:translate(6vmax,-4vmax) scale(1.12);}
+  }
+
+  /* faint spiral galaxy */
+  .galaxy{
+    right:-90px;bottom:16%;width:300px;height:300px;border-radius:50%;
+    background:
+      radial-gradient(circle, rgba(255,240,205,.85) 0 5%, rgba(255,240,205,0) 26%),
+      conic-gradient(from 0deg, transparent 0, rgba(150,120,255,.55) 12%, transparent 28%,
+                     rgba(255,140,200,.45) 50%, transparent 66%, rgba(120,190,255,.45) 84%, transparent 100%);
+    -webkit-mask-image:radial-gradient(circle, #000 25%, transparent 68%);
+            mask-image:radial-gradient(circle, #000 25%, transparent 68%);
+    filter:blur(5px);opacity:.42;
+    animation:galaxySpin 140s linear infinite;
+  }
+  @keyframes galaxySpin{to{transform:rotate(360deg);}}
+
+  /* ===== Solar system: Sun in the centre, all 8 planets orbiting ===== */
+  .solar{
+    left:50%;top:50%;width:540px;height:540px;margin:-270px 0 0 -270px;
+    transform:scale(var(--solar-scale,1));
+    animation:solarFade 1.6s ease both;
+  }
+  .solar > *{position:absolute;}      /* everything shares the Sun as centre */
+  @keyframes solarFade{from{opacity:0}to{opacity:.92}}
+
+  .sun-halo{
+    left:50%;top:50%;width:210px;height:210px;margin:-105px 0 0 -105px;border-radius:50%;
+    background:radial-gradient(circle, rgba(255,196,80,.55) 0%, rgba(255,150,60,.18) 40%, transparent 68%);
+    animation:pulseGlow 6s ease-in-out infinite;
+  }
+  @keyframes pulseGlow{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.1);opacity:1}}
+  .sun-corona{
+    left:50%;top:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(255,190,70,0), rgba(255,190,70,.55), rgba(255,190,70,0) 12%,
+      rgba(255,140,60,.45) 25%, rgba(255,190,70,0) 37%, rgba(255,200,80,.55) 50%, rgba(255,190,70,0) 62%,
+      rgba(255,140,60,.45) 75%, rgba(255,190,70,0) 87%, rgba(255,190,70,.55), rgba(255,190,70,0));
+    -webkit-mask-image:radial-gradient(circle, #000 20%, transparent 68%);
+            mask-image:radial-gradient(circle, #000 20%, transparent 68%);
+    animation:galaxySpin 50s linear infinite;
+  }
+  .sun{
+    left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;
+    background:radial-gradient(circle at 38% 34%, #fffbe0 0%, #ffd45c 30%, #ff9c2e 68%, #e0561c 100%);
+    box-shadow:0 0 22px 7px rgba(255,170,60,.75), 0 0 60px 22px rgba(255,120,40,.35);
+    animation:sunBreath 5s ease-in-out infinite;
+  }
+  @keyframes sunBreath{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+  /* Orbit rings turn around the Sun; each planet counter-rotates so it stays upright */
+  .orbit{
+    left:50%;top:50%;border-radius:50%;
+    width:var(--d);height:var(--d);margin:calc(var(--d) / -2) 0 0 calc(var(--d) / -2);
+    border:1px dashed rgba(255,255,255,.14);
+    animation:orbitSpin var(--dur) linear var(--delay) infinite;
+  }
+  @keyframes orbitSpin{to{transform:rotate(360deg);}}
+  .orbit .planet{
+    position:absolute;top:0;left:50%;
+    width:var(--s);height:var(--s);margin:calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+    border-radius:50%;
+    animation:orbitSpin var(--dur) linear var(--delay) infinite reverse;
+  }
+  /* d = orbit diameter, s = planet size, dur = one year (seconds, not to scale) */
+  .o-mercury{--d:82px; --s:6px;  --dur:9s;   --delay:-2s;}
+  .o-venus  {--d:132px;--s:10px; --dur:15s;  --delay:-9s;}
+  .o-earth  {--d:184px;--s:11px; --dur:24s;  --delay:-16s;}
+  .o-mars   {--d:236px;--s:8px;  --dur:36s;  --delay:-5s;}
+  .o-jupiter{--d:304px;--s:22px; --dur:62s;  --delay:-40s;}
+  .o-saturn {--d:376px;--s:16px; --dur:92s;  --delay:-18s;}
+  .o-uranus {--d:444px;--s:13px; --dur:130s; --delay:-85s;}
+  .o-neptune{--d:508px;--s:12px; --dur:170s; --delay:-30s;}
+
+  .p-mercury{background:radial-gradient(circle at 35% 35%, #d8d2c8, #8d8779 70%, #575247);}
+  .p-venus{background:radial-gradient(circle at 35% 35%, #fff3d2, #e8b96a 65%, #a8722a);
+           box-shadow:0 0 8px rgba(255,210,130,.45);}
+  .p-earth{
+    background:
+      radial-gradient(circle at 30% 40%, #5fbf6a 0 18%, transparent 20%),
+      radial-gradient(circle at 68% 62%, #5fbf6a 0 14%, transparent 16%),
+      radial-gradient(circle at 35% 30%, #8fd0ff, #2f7fe0 60%, #123c86);
+    box-shadow:0 0 9px rgba(90,170,255,.6);
+  }
+  .p-mars{background:radial-gradient(circle at 35% 35%, #ffb08a, #d4552b 65%, #7d2410);}
+  .p-jupiter{
+    background:
+      linear-gradient(180deg, transparent 0 14%, rgba(150,95,55,.6) 14% 24%, transparent 24% 40%,
+                      rgba(170,110,70,.55) 40% 52%, transparent 52% 66%, rgba(140,90,55,.55) 66% 76%, transparent 76%),
+      radial-gradient(circle at 35% 32%, #f7e2c2, #d9a672 60%, #8f5a34);
+    box-shadow:inset -3px -2px 6px rgba(0,0,0,.35);
+  }
+  .p-uranus{background:radial-gradient(circle at 35% 32%, #e6ffff, #7fd6e0 60%, #2c7f93);
+            box-shadow:0 0 8px rgba(130,225,235,.4);}
+  .p-neptune{background:radial-gradient(circle at 34% 30%, #b6d4ff, #3f6fe0 60%, #16307f);
+             box-shadow:0 0 8px rgba(80,120,255,.45);}
+
+  /* Saturn: globe + ring (back half behind, front half in front) */
+  .p-saturn{border-radius:0;}
+  .p-saturn .sg{
+    position:absolute;left:0;top:0;width:100%;height:100%;border-radius:50%;z-index:1;
+    background:
+      linear-gradient(180deg, transparent 0 30%, rgba(160,120,60,.4) 30% 44%, transparent 44% 62%, rgba(255,235,190,.25) 62% 74%, transparent 74%),
+      radial-gradient(circle at 35% 32%, #fff0c4, #e0c07a 60%, #8f6d34);
+    box-shadow:inset -3px -2px 5px rgba(0,0,0,.35);
+  }
+  .p-saturn .sr{
+    position:absolute;left:50%;top:50%;width:170%;height:170%;margin:-85% 0 0 -85%;
+    border-radius:50%;border:2px solid rgba(240,214,176,.75);
+    box-shadow:0 0 0 1px rgba(240,214,176,.25);
+    transform:scaleY(.32) rotate(-18deg);
+  }
+  .p-saturn .sr.back{z-index:0;}
+  .p-saturn .sr.front{z-index:2;clip-path:inset(50% 0 0 0);}
+
+  /* Earth's tiny moon */
+  .earth-moon-ring{
+    position:absolute;left:50%;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;
+    animation:orbitSpin 5s linear infinite;
+  }
+  .earth-moon-ring i{
+    position:absolute;top:0;left:50%;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;
+    background:#fff;box-shadow:0 0 4px rgba(255,255,255,.9);
+  }
+
+  /* ===== Slow drifting neighbours ===== */
+  .drifter{
+    border-radius:50%;
+    animation:driftAcross linear infinite;
+  }
+  @keyframes driftAcross{
+    from{transform:translateX(-18vw) translateY(0);}
+    50%{transform:translateX(60vw) translateY(-22px);}
+    to{transform:translateX(120vw) translateY(0);}
+  }
+  .drifter.moon{
+    top:44%;left:0;width:54px;height:54px;opacity:.55;
+    background:
+      radial-gradient(circle at 62% 30%, rgba(0,0,0,.14) 0 9%, transparent 10%),
+      radial-gradient(circle at 34% 62%, rgba(0,0,0,.12) 0 12%, transparent 13%),
+      radial-gradient(circle at 70% 72%, rgba(0,0,0,.10) 0 7%, transparent 8%),
+      radial-gradient(circle at 35% 35%, #fdfaf1 0%, #d9d3c3 55%, #a8a293 100%);
+    box-shadow:0 0 28px rgba(255,255,255,.25), inset -10px -6px 12px rgba(0,0,0,.28);
+    animation-duration:110s;animation-delay:-25s;
+  }
+
+  /* ===== Emoji travellers ===== */
+  .astro{font-size:1.9rem;filter:drop-shadow(0 0 8px rgba(255,255,255,.35));}
+  .astro.satellite{
+    top:26%;left:0;opacity:.8;font-size:1.5rem;
+    animation:satPass 38s linear infinite;
+  }
+  @keyframes satPass{
+    from{transform:translate(-12vw,40px) rotate(0deg);}
+    to{transform:translate(112vw,-60px) rotate(40deg);}
+  }
+  .astro.spaceman{
+    right:8%;bottom:20%;opacity:.85;
+    animation:floatSpin 16s ease-in-out infinite;
+  }
+  @keyframes floatSpin{
+    0%,100%{transform:translate(0,0) rotate(-12deg);}
+    50%{transform:translate(-18px,-24px) rotate(14deg);}
+  }
+
+  /* ===== Shooting stars ===== */
+  .shoot{
+    width:130px;height:2px;border-radius:2px;
+    background:linear-gradient(to right, #fff, rgba(255,255,255,0));
+    box-shadow:0 0 8px 1px rgba(255,255,255,.55);
+    opacity:0;
+    animation:shoot 9s linear infinite;
+  }
+  @keyframes shoot{
+    0%{opacity:0;transform:translate(0,0) rotate(-35deg);}
+    3%{opacity:1;}
+    16%{opacity:0;transform:translate(-520px,364px) rotate(-35deg);}
+    100%{opacity:0;transform:translate(-520px,364px) rotate(-35deg);}
+  }
+  .shoot.s1{top:6%;left:88%;animation-delay:1s;}
+  .shoot.s2{top:22%;left:98%;animation-delay:4.5s;animation-duration:12s;}
+  .shoot.s3{top:2%;left:60%;animation-delay:7s;animation-duration:10s;}
+  .shoot.s4{top:34%;left:80%;animation-delay:10.5s;animation-duration:14s;}
+
+  /* ===== Comet ===== */
+  .comet{
+    left:-240px;bottom:26%;width:200px;height:6px;
+    background:linear-gradient(to right, rgba(170,220,255,0), rgba(190,230,255,.55) 80%, #fff);
+    border-radius:6px;filter:blur(.6px);
+    opacity:0;
+    animation:cometFly 34s linear infinite;animation-delay:6s;
+  }
+  .comet::after{
+    content:"";position:absolute;right:-4px;top:50%;width:11px;height:11px;margin-top:-5.5px;border-radius:50%;
+    background:radial-gradient(circle, #fff 0 35%, rgba(190,230,255,.9) 60%, transparent 100%);
+    box-shadow:0 0 16px 5px rgba(170,220,255,.65);
+  }
+  @keyframes cometFly{
+    0%{opacity:0;transform:translate(0,0) rotate(-22deg);}
+    4%{opacity:1;}
+    30%{opacity:1;}
+    36%{opacity:0;transform:translate(125vw,-52vh) rotate(-22deg);}
+    100%{opacity:0;transform:translate(125vw,-52vh) rotate(-22deg);}
+  }
+
+  /* phones: hide the extra crossing moon so only the real solar system reads clearly */
+  @media (max-width:600px){
+    .drifter.moon{display:none;}
+    .astro.spaceman{bottom:12%;right:5%;font-size:1.5rem;}
+  }
+
+.card{
+    position:relative;z-index:1;
+    width:100%;max-width:440px;
+  }
+  .eyebrow-row{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .logo-badge{
+    width:52px;height:52px;border-radius:50%;
+    background:#fff;
+    padding:4px;
+    box-shadow:0 0 0 2px rgba(244,185,66,.5), 0 6px 18px rgba(0,0,0,.35);
+    flex-shrink:0;
+    animation:logoFloat 4s ease-in-out infinite;
+  }
+  .logo-badge img{
+    width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;
+  }
+  @keyframes logoFloat{
+    0%,100%{transform:translateY(0);}
+    50%{transform:translateY(-4px);}
+  }
+  .brand-row{
+    display:flex;align-items:center;gap:12px;margin-bottom:14px;
+  }
+  .brand-row .brand-text{display:flex;flex-direction:column;}
+  .brand-row .brand-text .kicker{margin-bottom:0;}
+  .brand-row .brand-text .org-name{
+    font-family:'Fraunces', serif;font-weight:600;font-size:.95rem;color:var(--cloud);
+    line-height:1.2;
+  }
+  .kicker{
+    font-size:.78rem;letter-spacing:.02em;color:var(--mist);
+  }
+  .counter-chip{
+    display:flex;align-items:center;gap:5px;
+    font-size:.74rem;color:var(--gold);
+    background:rgba(244,185,66,.1);
+    border:1px solid rgba(244,185,66,.3);
+    border-radius:100px;padding:4px 10px;
+    white-space:nowrap;
+  }
+
+  h1{
+    font-family:'Fraunces', serif;
+    font-weight:700;
+    font-size:clamp(2rem, 8vw, 2.7rem);
+    line-height:1.05;
+    margin:2px 0 10px;
+    color:var(--cloud);
+  }
+  h1 em{
+    font-style:italic;
+    background:linear-gradient(90deg,#2f8fff, #2f8fff);
+    -webkit-background-clip:text;background-clip:text;color:#2f8fff;
+  }
+  p.lede{
+    color:var(--mist);
+    font-size:1rem;
+    line-height:1.5;
+    margin:0 0 16px;
+    max-width:38ch;
+  }
+
+  .fact-ticker{
+    display:flex;align-items:center;gap:8px;
+    font-size:.82rem;color:var(--mist);
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:10px 14px;
+    margin-bottom:26px;
+    min-height:2.6em;
+  }
+  .fact-ticker .glyph{font-size:1rem;flex-shrink:0;}
+  .fact-ticker span.txt{opacity:1;transition:opacity .4s ease;}
+  .fact-ticker span.txt.fade{opacity:0;}
+
+  form{display:flex;flex-direction:column;gap:18px;}
+  label{
+    display:block;font-size:.88rem;color:var(--mist);margin-bottom:7px;
+  }
+  input[type=text]{
+    width:100%;
+    background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.16);
+    border-radius:10px;
+    padding:13px 14px;
+    color:var(--cloud);
+    font-size:1rem;
+    font-family:inherit;
+    outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input[type=text]:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(244,185,66,.15);}
+  input[type=text]::placeholder{color:#6a6f96;}
+
+  .loc-row{display:flex;gap:8px;}
+  .loc-row input{flex:1;}
+  .loc-btn{
+    flex-shrink:0;
+    background:rgba(244,185,66,.12);
+    border:1px solid rgba(244,185,66,.4);
+    color:var(--gold);
+    border-radius:10px;
+    padding:0 16px;
+    font-size:.85rem;
+    font-family:inherit;
+    cursor:pointer;
+    transition:transform .12s, background .15s;
+    display:flex;align-items:center;gap:5px;
+  }
+  .loc-btn:active{transform:scale(.96);}
+  .loc-btn .pin{display:inline-block;transition:transform .5s ease;}
+  .loc-btn.locating .pin{animation:spin 1s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .photo-zone{
+    border:2px dashed rgba(255,255,255,.28);
+    border-radius:18px;
+    padding:26px 20px;
+    text-align:center;
+    cursor:pointer;
+    position:relative;
+    transition:border-color .2s, background .2s, transform .15s;
+    background:rgba(255,255,255,.03);
+    overflow:hidden;
+  }
+  .photo-zone::before{
+    content:"";position:absolute;inset:0;border-radius:18px;
+    background:linear-gradient(120deg, transparent 30%, rgba(244,185,66,.12) 50%, transparent 70%);
+    background-size:220% 100%;
+    animation:shimmer 3.2s linear infinite;
+    opacity:0;
+    transition:opacity .2s;
+  }
+  .photo-zone:hover::before,
+  .photo-zone.dragover::before{opacity:1;}
+  @keyframes shimmer{
+    0%{background-position:130% 0;}
+    100%{background-position:-30% 0;}
+  }
+  .photo-zone.dragover{border-color:var(--gold);background:rgba(244,185,66,.07);transform:scale(1.01);}
+  .photo-zone.has-image{border-style:solid;border-color:var(--gold-dim);padding:10px;}
+  .photo-zone input[type=file]{
+    position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;
+  }
+  .photo-zone .hint-icon{
+    font-size:2.1rem;display:block;margin-bottom:10px;
+    animation:bob 2.4s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+  .photo-zone .hint-text{font-size:.95rem;color:var(--mist);font-weight:500;}
+  .photo-zone .hint-sub{font-size:.78rem;color:#6a6f96;margin-top:4px;}
+  #preview{
+    display:none;max-width:100%;max-height:280px;border-radius:12px;margin:0 auto;
+    box-shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+
+  button[type=submit]{
+    background:linear-gradient(90deg, var(--gold), var(--gold-2));
+    background-size:200% 100%;
+    color:#231603;
+    border:none;
+    border-radius:12px;
+    padding:16px;
+    font-size:1.02rem;
+    font-weight:700;
+    font-family:inherit;
+    cursor:pointer;
+    margin-top:6px;
+    transition:transform .12s, opacity .15s, background-position .4s;
+    display:flex;align-items:center;justify-content:center;gap:9px;
+  }
+  button[type=submit]:hover{background-position:100% 0;}
+  button[type=submit]:active{transform:scale(.98);}
+  button[type=submit]:disabled{opacity:.6;cursor:not-allowed;}
+  .spinner{
+    width:16px;height:16px;border-radius:50%;
+    border:2.5px solid rgba(35,22,3,.3);border-top-color:#231603;
+    display:none;animation:spin .7s linear infinite;
+  }
+  button[type=submit].loading .spinner{display:inline-block;}
+
+  .status{
+    font-size:.88rem;margin-top:2px;min-height:1.2em;
+  }
+  .status.err{color:var(--err);}
+  .status.ok{color:var(--ok);}
+
+  .done{
+    display:none;
+    text-align:center;
+    padding:56px 10px 10px;
+    position:relative;
+  }
+  .done .glyph-wrap{
+    position:relative;width:90px;height:90px;margin:0 auto 18px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .done .ring{
+    position:absolute;inset:0;border-radius:50%;
+    border:2px solid rgba(244,185,66,.5);
+    animation:ringPulse 1.8s ease-out infinite;
+  }
+  .done .ring:nth-child(2){animation-delay:.5s;}
+  @keyframes ringPulse{
+    0%{transform:scale(.6);opacity:1;}
+    100%{transform:scale(1.6);opacity:0;}
+  }
+  .done .glyph{font-size:2.8rem;position:relative;z-index:1;}
+  .done h2{
+    font-family:'Fraunces', serif;font-weight:700;
+    font-size:1.8rem;margin:0 0 10px;
+    background:linear-gradient(90deg, var(--gold), var(--gold-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .done p{color:var(--mist);line-height:1.5;margin:0 0 26px;}
+  .done button{
+    background:transparent;border:1px solid rgba(255,255,255,.3);
+    color:var(--cloud);border-radius:10px;padding:12px 24px;
+    font-family:inherit;font-size:.9rem;cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .done button:hover{border-color:var(--gold);background:rgba(244,185,66,.08);}
+
+  .confetti{position:absolute;top:0;font-size:1.2rem;opacity:0;pointer-events:none;
+    animation:fall 2.6s ease-in forwards;}
+  @keyframes fall{
+    0%{opacity:1;transform:translateY(-10px) rotate(0deg);}
+    100%{opacity:0;transform:translateY(140px) rotate(200deg);}
+  }
+
+  footer{
+    position:relative;z-index:1;
+    text-align:center;color:#565b82;font-size:.72rem;
+    margin-top:34px;
+  }
+
+  /* keep the form legible over the moving planets */
+  h1, p.lede, label, .kicker, .org-name{text-shadow:0 1px 8px rgba(8,10,36,.95), 0 0 2px rgba(8,10,36,.8);}
+  input[type=text]{
+    background:rgba(12,17,52,.62);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
+  .photo-zone{
+    background:rgba(12,17,52,.48);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
+  .fact-ticker{
+    background:rgba(12,17,52,.6);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.01ms !important; animation-iteration-count:1 !important;}
+  }
+</style>
+</head>
+<body>
+
+<div class="sky-deco" aria-hidden="true">
+  <div class="nebula n1"></div>
+  <div class="nebula n2"></div>
+  <div class="galaxy"></div>
+  <div class="stars" id="stars"></div>
+
+  <!-- Solar system: Sun + all 8 planets orbiting -->
+  <div class="solar">
+    <div class="sun-halo"></div>
+    <div class="sun-corona"></div>
+    <div class="sun"></div>
+    <div class="orbit o-mercury"><div class="planet p-mercury"></div></div>
+    <div class="orbit o-venus"><div class="planet p-venus"></div></div>
+    <div class="orbit o-earth">
+      <div class="planet p-earth"><div class="earth-moon-ring"><i></i></div></div>
+    </div>
+    <div class="orbit o-mars"><div class="planet p-mars"></div></div>
+    <div class="orbit o-jupiter"><div class="planet p-jupiter"></div></div>
+    <div class="orbit o-saturn">
+      <div class="planet p-saturn"><b class="sr back"></b><i class="sg"></i><b class="sr front"></b></div>
+    </div>
+    <div class="orbit o-uranus"><div class="planet p-uranus"></div></div>
+    <div class="orbit o-neptune"><div class="planet p-neptune"></div></div>
+  </div>
+
+  <!-- Drifting moon -->
+  <div class="drifter moon"></div>
+
+  <!-- Satellite and astronaut -->
+  <div class="astro satellite">🛰️</div>
+  <div class="astro spaceman">🧑‍🚀</div>
+
+  <!-- Shooting stars and comet -->
+  <div class="shoot s1"></div>
+  <div class="shoot s2"></div>
+  <div class="shoot s3"></div>
+  <div class="shoot s4"></div>
+  <div class="comet"></div>
+</div>
+
+<div class="card">
+
+  <div id="formView">
+    <div class="brand-row">
+      <div class="logo-badge">
+        <img src="data:image/jpeg;base64,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" alt="Pimpri Chinchwad Science Park logo">
+      </div>
+      <div class="brand-text">
+        <span class="org-name">Pimpri Chinchwad Science Park presents</span>
+        <span class="org-name">Astro-Photography</span>
+      </div>
+    </div>
+    <div class="eyebrow-row" style="justify-content:flex-end;">
+      <span class="counter-chip" id="counterChip" style="display:none;">🌍 <span id="counterNum">0</span> shared</span>
+    </div>
+    <h1>Capture the <em>sky</em>,<br>share the moment.</h1>
+    <p class="lede">Snap the sun, moon, clouds or stars your photo joins the live Astro-fest on screen.</p>
+
+    <div class="fact-ticker">
+      <span class="glyph">✨</span>
+      <span class="txt" id="factText">Did you know? The Moon is drifting about 3.8 cm farther from Earth every year.</span>
+    </div>
+
+    <form id="skyForm">
+      <div>
+        <label for="name">Your name</label>
+        <input type="text" id="name" placeholder="e.g. Aarav Sharma" required maxlength="40">
+      </div>
+
+      <div>
+        <label for="location">Add Photo location here</label>
+        <div class="loc-row">
+          <input type="text" id="location" placeholder="e.g. Pimpri Chinchwad" required maxlength="60">
+         </div>
+      </div>
+
+      <div>
+        <label>Upload your captured photo</label>
+        <div class="photo-zone" id="photoZone">
+          <input type="file" id="photoInput" accept="image/*" required>
+          <span class="hint-icon">☀️</span>
+          <span class="hint-text">Tap, or drag a photo here</span>
+          <span class="hint-sub">Sun, moon, clouds, stars — anything sky-related</span>
+          <img id="preview">
+        </div>
+      </div>
+
+      <button type="submit" id="submitBtn"><span class="spinner"></span><span class="btnLabel">Send to Astro-fest</span></button>
+      <div class="status" id="statusMsg"></div>
+    </form>
+  </div>
+
+  <div class="done" id="doneView">
+    <div class="glyph-wrap">
+      <div class="ring"></div>
+      <div class="ring"></div>
+      <span class="glyph">🌤️</span>
+    </div>
+    <h2>You're on the wall!</h2>
+    <p>Look up at the screen — your photo will appear shortly.</p>
+    <button id="againBtn">Add another photo</button>
+  </div>
+
+</div>
+
+<footer>An automatic Astro-fest photography wall · Pimpri Chinchwad Science Park</footer>
+
+<script>
+  // starfield
+  const starWrap = document.getElementById('stars');
+  for(let i=0;i<120;i++){
+    const s=document.createElement('span');
+    s.style.position='absolute';
+    s.style.left=Math.random()*100+'%';
+    s.style.top=Math.random()*100+'%';
+    s.style.width=s.style.height=(Math.random()>.85 ? '3px':'2px');
+    s.style.background='#fff';
+    s.style.borderRadius='50%';
+    s.style.opacity='.5';
+    s.style.animation=`twinkle ${2.5+Math.random()*2.5}s ease-in-out infinite`;
+    s.style.animationDelay=(Math.random()*3.5)+'s';
+    starWrap.appendChild(s);
+  }
+
+  // fit the whole solar system on screen, centred behind the form
+  function fitSolar(){
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const scale = Math.min(1.8, Math.min(vw, vh) / 560);   // 540px system + a little margin
+    document.documentElement.style.setProperty('--solar-scale', scale.toFixed(3));
+  }
+  fitSolar();
+  window.addEventListener('resize', fitSolar);
+
+  // rotating sky facts
+  const FACTS = [
+    "Did you know? The Moon is drifting about 3.8 cm farther from Earth every year.",
+    "Did you know? Sunlight takes about 8 minutes 20 seconds to reach Earth.",
+    "Did you know? A rainbow is actually a full circle — we usually only see half of it.",
+    "Did you know? The sky is blue because air scatters short blue wavelengths more than red.",
+    "Did you know? Some clouds can weigh over a million kilograms and still float.",
+    "Did you know? On a clear night you can see up to about 2,500 stars with the naked eye."
+  ];
+  let factIndex = 0;
+  const factText = document.getElementById('factText');
+  setInterval(() => {
+    factText.classList.add('fade');
+    setTimeout(() => {
+      factIndex = (factIndex + 1) % FACTS.length;
+      factText.textContent = FACTS[factIndex];
+      factText.classList.remove('fade');
+    }, 400);
+  }, 6000);
+
+  // ---- Core UI elements & photo handling: wired up FIRST, and with no
+  // dependency on Firebase at all, so a config mistake below can never
+  // break photo selection / preview / drag-drop again. ----
+  const form = document.getElementById('skyForm');
+  const nameInput = document.getElementById('name');
+  const locInput = document.getElementById('location');
+  const locBtn = document.getElementById('locBtn');
+  const photoInput = document.getElementById('photoInput');
+  const photoZone = document.getElementById('photoZone');
+  const preview = document.getElementById('preview');
+  const submitBtn = document.getElementById('submitBtn');
+  const btnLabel = submitBtn.querySelector('.btnLabel');
+  const statusMsg = document.getElementById('statusMsg');
+  const formView = document.getElementById('formView');
+  const doneView = document.getElementById('doneView');
+  const counterChip = document.getElementById('counterChip');
+  const counterNum = document.getElementById('counterNum');
+
+  let compressedDataUrl = null;
+
+  function handleFile(file){
+    if(!file || !file.type.startsWith('image/')) return;
+    const img = new Image();
+    const reader = new FileReader();
+    img.onload = () => {
+      // Best-quality encode that still fits in one Firestore document (~1 MB).
+      // 1) If the original file already fits, send it untouched (zero re-compression).
+      // 2) Otherwise keep full resolution as long as possible (TV is 1920 wide) and
+      //    only lower JPEG quality slowly, from 0.95 down to a floor of 0.80.
+      const LIMIT = 960000;                       // max length of the data URL
+      const original = img.src;
+      let dataUrl = null;
+      if(/^data:image\/(jpeg|png|webp);base64,/.test(original) && original.length <= LIMIT){
+        dataUrl = original;
+      } else {
+        const longEdge = Math.max(img.naturalWidth, img.naturalHeight);
+        const edges = [3840, 3000, 2560, 2200, 1920, 1600, 1280].filter(e => e < longEdge);
+        edges.unshift(longEdge);                  // try the full original size first
+        const qualities = [0.95, 0.92, 0.88, 0.84, 0.80];
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        outer:
+        for(const edge of edges){
+          const scale = Math.min(1, edge / longEdge);
+          canvas.width = Math.round(img.naturalWidth * scale);
+          canvas.height = Math.round(img.naturalHeight * scale);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          for(const q of qualities){
+            const d = canvas.toDataURL('image/jpeg', q);
+            if(d.length <= LIMIT){ dataUrl = d; break outer; }
+          }
+        }
+        if(!dataUrl) dataUrl = canvas.toDataURL('image/jpeg', 0.7);   // last resort
+      }
+      compressedDataUrl = dataUrl;
+      preview.src = dataUrl;
+      preview.style.display = 'block';
+      photoZone.classList.add('has-image');
+      document.querySelector('.hint-icon').style.display='none';
+      document.querySelector('.hint-text').textContent = 'Tap to change photo';
+      document.querySelector('.hint-sub').style.display='none';
+    };
+    reader.onload = (e) => { img.src = e.target.result; };
+    reader.readAsDataURL(file);
+  }
+
+  // high-quality encode, sized to fit one Firestore doc (~1 MB)
+  photoInput.addEventListener('change', () => handleFile(photoInput.files[0]));
+
+  // drag & drop support (desktop kiosks / laptops)
+  ['dragenter','dragover'].forEach(evt =>
+    photoZone.addEventListener(evt, (e) => { e.preventDefault(); photoZone.classList.add('dragover'); })
+  );
+  ['dragleave','drop'].forEach(evt =>
+    photoZone.addEventListener(evt, (e) => { e.preventDefault(); photoZone.classList.remove('dragover'); })
+  );
+  photoZone.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files[0];
+    if(file){
+      try{
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        photoInput.files = dt.files;
+      }catch(e2){ /* DataTransfer unsupported on this browser — preview still works */ }
+      handleFile(file);
+    }
+  });
+
+  function spawnConfetti(){
+    const glyphs = ['☀️','🌙','⭐','☁️','✨'];
+    const wrap = document.getElementById('doneView');
+    for(let i=0;i<14;i++){
+      const c = document.createElement('span');
+      c.className = 'confetti';
+      c.textContent = glyphs[Math.floor(Math.random()*glyphs.length)];
+      c.style.left = (10 + Math.random()*80) + '%';
+      c.style.animationDelay = (Math.random()*.6)+'s';
+      wrap.appendChild(c);
+      setTimeout(() => c.remove(), 3000);
+    }
+  }
+
+  document.getElementById('againBtn').addEventListener('click', () => {
+    form.reset();
+    compressedDataUrl = null;
+    preview.style.display='none';
+    photoZone.classList.remove('has-image');
+    document.querySelector('.hint-icon').style.display='';
+    document.querySelector('.hint-text').textContent = 'Tap, or drag a photo here';
+    document.querySelector('.hint-sub').style.display='';
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('loading');
+    btnLabel.textContent = "Send to the Astro-fest";
+    doneView.style.display = 'none';
+    formView.style.display = 'block';
+  });
+
+  // reverse geocode with browser geolocation (free, no key: bigdatacloud client API)
+  // — no Firebase dependency, safe to wire up here too.
+  if(locBtn) locBtn.addEventListener('click', () => {   // button is optional: not present in this layout
+    if(!navigator.geolocation){
+      statusMsg.textContent = "Location detection isn't available on this device.";
+      statusMsg.className = "status err";
+      return;
+    }
+    locBtn.classList.add('locating');
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try{
+        const {latitude, longitude} = pos.coords;
+        const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+        const data = await res.json();
+        const place = [data.locality, data.city, data.principalSubdivision].filter(Boolean);
+        locInput.value = place.length ? place[0] : `${latitude.toFixed(3)}, ${longitude.toFixed(3)}`;
+      }catch(e){
+        statusMsg.textContent = "Couldn't detect location — please type it in.";
+        statusMsg.className = "status err";
+      }
+      locBtn.classList.remove('locating');
+    }, () => {
+      locBtn.classList.remove('locating');
+      statusMsg.textContent = "Location access denied — please type it in.";
+      statusMsg.className = "status err";
+    }, {timeout:8000});
+  });
+
+  // ---- Firebase: wrapped so a bad/placeholder config shows a clear
+  // message instead of silently breaking the page. ----
+  let db = null;
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+
+    // live-ish counter (cheap aggregate count, no image data downloaded)
+    try{
+      db.collection(COLLECTION_NAME).count().get()
+        .then(snap => {
+          counterNum.textContent = snap.data().count;
+          counterChip.style.display = 'flex';
+        })
+        .catch(() => { /* offline or blocked: just hide the chip */ });
+    }catch(e){
+      // count() unsupported on this SDK build — quietly skip the counter
+    }
+  }catch(e){
+    statusMsg.textContent = "This page isn't connected to a database yet — paste your Firebase config in first.";
+    statusMsg.className = "status err";
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if(!compressedDataUrl){
+      statusMsg.textContent = "Please add a photo first.";
+      statusMsg.className = "status err";
+      return;
+    }
+    if(!db){
+      statusMsg.textContent = "This page isn't connected to a database yet — paste your Firebase config in first.";
+      statusMsg.className = "status err";
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.classList.add('loading');
+    btnLabel.textContent = "Sending…";
+    statusMsg.textContent = "";
+    try{
+      await db.collection(COLLECTION_NAME).add({
+        name: nameInput.value.trim().slice(0,40),
+        location: locInput.value.trim().slice(0,60),
+        image: compressedDataUrl,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      formView.style.display = 'none';
+      doneView.style.display = 'block';
+      spawnConfetti();
+      counterNum.textContent = (parseInt(counterNum.textContent||'0',10) + 1);
+    }catch(err){
+      statusMsg.textContent = "Couldn't send — check your connection and try again.";
+      statusMsg.className = "status err";
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('loading');
+      btnLabel.textContent = "Send to the Astro-fest";
+    }
+  });
+</script>
+</body>
+</html>

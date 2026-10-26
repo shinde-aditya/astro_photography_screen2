@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Astro-fest — Pimpri Chinchwad Science Park</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0c1130; --gold:#f4b942; --cloud:#f4f2ec; --mist:#aab0d6;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(ellipse at 20% 0%, #1c2566 0%, transparent 55%), var(--navy);
+    color:var(--cloud);
+    font-family:'IBM Plex Sans', sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    padding:40px 20px;
+  }
+  #sky{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+  .wrap{position:relative;z-index:1;width:100%;max-width:420px;text-align:center;}
+  .kicker{font-size:.78rem;color:var(--mist);}
+  h1{
+    font-family:'Fraunces', serif;font-weight:600;
+    font-size:clamp(1.9rem,8vw,2.4rem);margin:6px 0 30px;
+  }
+  h1 em{font-style:italic;color:var(--gold);}
+  a.card{
+    display:block;text-decoration:none;
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:16px;
+    padding:22px;
+    margin-bottom:16px;
+    text-align:left;
+    transition:border-color .15s, background .15s;
+  }
+  a.card:hover{border-color:var(--gold);background:rgba(255,255,255,.08);}
+  a.card .glyph{font-size:1.6rem;margin-bottom:8px;display:block;}
+  a.card .label{color:var(--cloud);font-weight:600;font-size:1.05rem;margin-bottom:3px;}
+  a.card .sub{color:var(--mist);font-size:.85rem;}
+  a.staff{
+    display:block;text-align:center;margin-top:18px;
+    color:var(--mist);font-size:.8rem;text-decoration:none;opacity:.7;
+    transition:opacity .15s,color .15s;
+  }
+  a.staff:hover{opacity:1;color:var(--gold);}
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="wrap">
+  <span class="kicker">Pimpri Chinchwad Science Park</span>
+  <h1>Astro <em>fest</em></h1>
+
+  <a class="card" href="upload.html" target="_blank">
+    <span class="glyph">📸</span>
+    <div class="label">Add a sky photo</div>
+    <div class="sub">For visitors — this is what the QR code points to</div>
+  </a>
+
+  <a class="card" href="display.html" target="_blank">
+    <span class="glyph">📺</span>
+    <div class="label">Open the live wall</div>
+    <div class="sub">For the TV screen — leave this open, it updates itself</div>
+  </a>
+
+  <a class="staff" href="admin.html" target="_blank">Staff sign-in</a>
+</div>
+
+<script>
+(function(){
+  // A tilted orrery: the Sun, eight planets, an asteroid belt and a comet.
+  var cv=document.getElementById('sky'), ctx=cv.getContext('2d');
+  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var W,H,dpr,cx,cy,base,k=0.34,tilt=-0.32,u=1,stars=[],belt=[];
+  var TAU=Math.PI*2;
+  // r = orbit radius (fraction of base), w = angular speed (rad/s), s = size, c = colour
+  var planets=[
+    {r:.07,w:.90,s:2.2,c:'184,178,167'},
+    {r:.11,w:.55,s:3.6,c:'232,201,143'},
+    {r:.16,w:.38,s:4.2,c:'79,143,224',moon:true},
+    {r:.22,w:.20,s:3.0,c:'217,105,74'},
+    {r:.42,w:.09,s:8.5,c:'216,180,138',bands:true},
+    {r:.55,w:.055,s:6.5,c:'230,211,161',ring:true},
+    {r:.68,w:.035,s:5,c:'143,216,224'},
+    {r:.80,w:.025,s:5,c:'91,123,232'}
+  ];
+  planets.forEach(function(p){p.a0=Math.random()*TAU;});
+
+  function resize(){
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    W=innerWidth;H=innerHeight;
+    cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+    cx=W*0.28;cy=H*0.7;base=Math.hypot(W,H)*0.5;
+    u=Math.min(Math.max(Math.min(W,H)/700,0.7),1.3);
+    stars=[];var n=Math.round(Math.min(380,W*H/3600));
+    for(var i=0;i<n;i++){var q=Math.random();
+      stars.push({x:Math.random()*W,y:Math.random()*H,r:0.3+Math.random()*(q<.1?1.3:.7),
+        al:0.2+Math.random()*0.6,f:0.5+Math.random()*2,p:Math.random()*TAU,
+        c:q<.2?'244,185,66':(q<.5?'170,176,214':'244,242,236')});}
+    belt=[];for(i=0;i<260;i++)belt.push({r:(0.27+Math.random()*0.06),a:Math.random()*TAU,w:0.11+Math.random()*0.04,z:Math.random()<.2?1.4:0.8});
+    if(reduce)frame(0);
+  }
+
+  // orbit-plane point -> screen (flattened by k, rotated by ang)
+  function proj(x,y,ang){
+    y*=k;var c=Math.cos(ang),s=Math.sin(ang);
+    return [cx+x*c-y*s,cy+x*s+y*c];
+  }
+
+  function disc(x,y,r,col,al){
+    var g=ctx.createRadialGradient(x-r*.35,y-r*.35,r*.1,x,y,r);
+    g.addColorStop(0,'rgba(255,255,255,'+al*.9+')');
+    g.addColorStop(.35,'rgba('+col+','+al+')');
+    g.addColorStop(1,'rgba('+col+','+al*.35+')');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,r,0,TAU);ctx.fill();
+  }
+
+  function drawPlanet(p,t,pos){
+    var x=pos[0],y=pos[1],r=p.s*u;
+    if(p.ring){ // back half of ring is hidden by the planet, front half crosses it
+      ctx.strokeStyle='rgba(230,211,161,.55)';ctx.lineWidth=1.6*u;
+      ctx.beginPath();ctx.ellipse(x,y,r*2.1,r*0.62,tilt,Math.PI,TAU);ctx.stroke();
+      disc(x,y,r,p.c,1);
+      ctx.beginPath();ctx.ellipse(x,y,r*2.1,r*0.62,tilt,0,Math.PI);ctx.stroke();
+      return;
+    }
+    disc(x,y,r,p.c,1);
+    if(p.bands){ctx.strokeStyle='rgba(120,80,50,.28)';ctx.lineWidth=r*.18;
+      for(var b=-1;b<=1;b+=1){ctx.beginPath();ctx.ellipse(x,y+b*r*.38,r*.9,r*.12,0,0,TAU);ctx.stroke();}}
+    if(p.moon){var ma=t*2.6,mr=r*3;
+      disc(x+Math.cos(ma)*mr,y+Math.sin(ma)*mr*0.5,1.4*u,'210,210,215',1);}
+  }
+
+  function drawSun(t){
+    var pulse=reduce?1:1+0.04*Math.sin(t*1.3),R=95*u*pulse;
+    var g=ctx.createRadialGradient(cx,cy,0,cx,cy,R*2.4);
+    g.addColorStop(0,'rgba(255,214,120,.55)');g.addColorStop(.25,'rgba(244,185,66,.22)');g.addColorStop(1,'rgba(244,185,66,0)');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,R*2.4,0,TAU);ctx.fill();
+    var c=ctx.createRadialGradient(cx,cy,0,cx,cy,15*u);
+    c.addColorStop(0,'#fff8e0');c.addColorStop(.6,'#ffd77a');c.addColorStop(1,'#f4b942');
+    ctx.fillStyle=c;ctx.beginPath();ctx.arc(cx,cy,15*u,0,TAU);ctx.fill();
+  }
+
+  // comet on a long ellipse (Kepler's equation), tail always points away from the Sun
+  var cm={a:.46,e:.87,n:.07,rot:tilt+1.0};
+  function drawComet(t){
+    var M=t*cm.n+1.3,E=M;for(var i=0;i<5;i++)E=M+cm.e*Math.sin(E);
+    var a=cm.a*base,b=a*Math.sqrt(1-cm.e*cm.e);
+    var pos=proj(a*(Math.cos(E)-cm.e),b*Math.sin(E),cm.rot);
+    var dx=pos[0]-cx,dy=pos[1]-cy,d=Math.hypot(dx,dy)||1;
+    var len=Math.min(260,Math.max(30,22000/d))*u,tx=pos[0]+dx/d*len,ty=pos[1]+dy/d*len;
+    var g=ctx.createLinearGradient(pos[0],pos[1],tx,ty);
+    g.addColorStop(0,'rgba(190,230,255,.75)');g.addColorStop(1,'rgba(190,230,255,0)');
+    ctx.strokeStyle=g;ctx.lineWidth=3*u;ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(pos[0],pos[1]);ctx.lineTo(tx,ty);ctx.stroke();
+    ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pos[0],pos[1]);ctx.lineTo(pos[0]+dx/d*len*1.4+dy/d*6,pos[1]+dy/d*len*1.4-dx/d*6);ctx.stroke();
+    disc(pos[0],pos[1],2.6*u,'220,240,255',1);
+  }
+
+  function frame(ms){
+    var t=ms/1000,i;
+    ctx.clearRect(0,0,W,H);
+    for(i=0;i<stars.length;i++){var s=stars[i],a=s.al*(reduce?1:.7+.3*Math.sin(t*s.f+s.p));
+      ctx.fillStyle='rgba('+s.c+','+a+')';ctx.beginPath();ctx.arc(s.x,s.y,s.r,0,TAU);ctx.fill();}
+    // orbit rings
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(170,176,214,.14)';
+    planets.forEach(function(p){ctx.beginPath();ctx.ellipse(cx,cy,p.r*base,p.r*base*k,tilt,0,TAU);ctx.stroke();});
+    // asteroid belt
+    ctx.fillStyle='rgba(200,195,185,.45)';
+    for(i=0;i<belt.length;i++){var b=belt[i],an=b.a+t*b.w,q=proj(Math.cos(an)*b.r*base,Math.sin(an)*b.r*base,tilt);
+      ctx.fillRect(q[0],q[1],b.z*u,b.z*u);}
+    // planets behind the Sun, then the Sun, then planets in front (depth by orbital phase)
+    var items=planets.map(function(p){var an=p.a0+t*p.w;
+      return {p:p,front:Math.sin(an)>0,pos:proj(Math.cos(an)*p.r*base,Math.sin(an)*p.r*base,tilt)};});
+    items.forEach(function(o){if(!o.front)drawPlanet(o.p,t,o.pos);});
+    drawSun(t);
+    items.forEach(function(o){if(o.front)drawPlanet(o.p,t,o.pos);});
+    drawComet(t);
+  }
+  function loop(ms){frame(ms);requestAnimationFrame(loop);}
+  addEventListener('resize',resize);
+  resize();
+  if(!reduce)requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

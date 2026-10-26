@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Astro-fest — Admin (private)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================ -->
+<!--  SETUP: same Firebase config as upload.html / display.html    -->
+<!--  ADMIN_EMAIL = the one email you create in Firebase Auth.     -->
+<!-- ============================================================ -->
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyC2U5AW64qzJDYliACxlwkHO3t_zSFwQ9M",
+    authDomain: "astro-fest-photography.firebaseapp.com",
+    projectId: "astro-fest-photography",
+    appId: "1:956957907521:web:3eb9787d7f5a99580cc4c0"
+  };
+  const COLLECTION_NAME = "skyPhotos";
+  const ADMIN_EMAIL = "adityamshinde123@gmail.com";   // e.g. "you@gmail.com"
+  const DEFAULT_MODE = "last48";                 // must match DEFAULT_MODE in display.html
+  const MAX_LOAD = 1000;                          // newest photos loaded into this page
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.13.2/firebase-firestore-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<style>
+  :root{
+    --navy:#0c1130; --gold:#f4b942; --cloud:#f4f2ec; --mist:#aab0d6; --dim:#6f75a0;
+    --err:#e9707a; --ok:#6fd6a0; --sky:#5cd6ff;
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;min-height:100%;}
+  body{
+    background:radial-gradient(ellipse at 20% 0%, #1c2566 0%, transparent 55%), var(--navy);
+    background-attachment:fixed;
+    color:var(--cloud);
+    font-family:'IBM Plex Sans', sans-serif;
+    padding:24px 16px 80px;
+  }
+  [hidden]{display:none !important;}
+  .kicker{font-size:.78rem;color:var(--mist);}
+  h1{font-family:'Fraunces', serif;font-weight:600;font-size:clamp(1.6rem,6vw,2.1rem);margin:4px 0 6px;}
+  h1 em{font-style:italic;color:var(--gold);}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    font-family:inherit;font-size:.82rem;font-weight:500;cursor:pointer;
+    padding:8px 13px;border-radius:9px;color:var(--cloud);
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);
+    transition:border-color .15s, background .15s, opacity .15s;
+  }
+  .btn:hover:not(:disabled){border-color:var(--gold);background:rgba(255,255,255,.12);}
+  .btn:disabled{opacity:.38;cursor:not-allowed;}
+  .btn.primary{background:var(--gold);color:#1a1300;border-color:var(--gold);font-weight:600;}
+  .btn.primary:hover:not(:disabled){background:#ffc95c;}
+  .btn.danger{color:var(--err);background:rgba(233,112,122,.12);border-color:rgba(233,112,122,.5);}
+  .btn.danger:hover:not(:disabled){background:rgba(233,112,122,.22);border-color:var(--err);}
+  .btn.small{padding:5px 9px;font-size:.74rem;}
+
+  /* ---------- login ---------- */
+  .login{max-width:400px;margin:9vh auto 0;}
+  .login .panel{padding:28px 24px;}
+  .panel{
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.13);
+    border-radius:16px;
+  }
+  .login label{display:block;font-size:.8rem;color:var(--mist);margin:16px 0 6px;}
+  .login input{
+    width:100%;font-family:inherit;font-size:1rem;color:var(--cloud);
+    background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.2);
+    border-radius:10px;padding:12px 14px;outline:none;
+  }
+  .login input:focus{border-color:var(--gold);}
+  .login .btn.primary{width:100%;margin-top:22px;padding:13px;font-size:.95rem;}
+  .login .msg{min-height:1.3em;font-size:.84rem;margin-top:14px;}
+  .login .msg.err{color:var(--err);} .login .msg.ok{color:var(--ok);}
+  .linkbtn{
+    background:none;border:none;color:var(--mist);font-family:inherit;font-size:.8rem;
+    text-decoration:underline;cursor:pointer;padding:0;margin-top:14px;
+  }
+
+  /* ---------- app ---------- */
+  .wrap{max-width:1200px;margin:0 auto;}
+  .top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between;margin-bottom:18px;}
+  .top .who{font-size:.78rem;color:var(--mist);margin-bottom:8px;text-align:right;word-break:break-all;}
+  .top .actions{display:flex;gap:8px;justify-content:flex-end;}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:14px;}
+  .stat{padding:14px 16px;}
+  .stat .num{font-family:'Fraunces',serif;font-size:2rem;line-height:1;color:var(--gold);}
+  .stat .lbl{font-size:.78rem;color:var(--mist);margin-top:6px;}
+  .hint{font-size:.76rem;color:var(--dim);margin:0 0 16px;line-height:1.5;}
+
+  .displaybox{padding:14px 16px;margin-bottom:14px;}
+  .displaybox .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;}
+  .displaybox .title{font-weight:600;font-size:.95rem;}
+  .displaybox .state{font-size:.84rem;color:var(--mist);margin-top:3px;}
+  .displaybox .state b{color:var(--sky);font-weight:600;}
+  .displaybox .btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+
+  .toolbar{
+    position:sticky;top:env(safe-area-inset-top,0px);z-index:20;
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    padding:10px 12px;margin-bottom:6px;
+    background:rgba(12,17,48,.88);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.13);border-radius:12px;
+  }
+  .toolbar .count{font-size:.84rem;color:var(--cloud);margin-right:auto;font-weight:500;}
+  .toolbar .sep{width:1px;align-self:stretch;background:rgba(255,255,255,.15);margin:0 2px;}
+
+  .day{margin-top:26px;}
+  .dayhead{
+    display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;
+    padding-bottom:10px;margin-bottom:12px;border-bottom:1px solid rgba(255,255,255,.13);
+  }
+  .dayhead .chk{display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .dayhead .daytitle{font-family:'Fraunces',serif;font-size:1.15rem;}
+  .dayhead .daycount{font-size:.8rem;color:var(--mist);margin-right:auto;}
+  .dayhead .dayactions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  input[type=checkbox]{width:20px;height:20px;accent-color:var(--gold);cursor:pointer;margin:0;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}
+  .tile{
+    position:relative;overflow:hidden;
+    background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.12);
+    border-radius:14px;
+  }
+  .tile.selected{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold);}
+  .tile img.thumb{width:100%;height:150px;object-fit:cover;display:block;cursor:zoom-in;background:#080b22;}
+  .tile .pick{
+    position:absolute;top:8px;left:8px;width:30px;height:30px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(12,17,48,.75);border-radius:8px;
+  }
+  .tile .badge{
+    position:absolute;top:8px;right:8px;
+    background:rgba(92,214,255,.92);color:#04263a;font-size:.66rem;font-weight:600;
+    padding:3px 8px;border-radius:99px;
+  }
+  .tile .body{padding:10px 12px 12px;}
+  .tile .name{font-weight:600;font-size:.92rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tile .loc{color:var(--mist);font-size:.78rem;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tile .time{color:var(--dim);font-size:.72rem;margin-top:5px;}
+  .tile .acts{display:flex;gap:6px;margin-top:10px;}
+  .tile .acts .btn{flex:1;}
+
+  .empty{color:var(--mist);text-align:center;padding:60px 20px;}
+
+  /* ---------- lightbox + toast ---------- */
+  .lightbox{
+    position:fixed;inset:0;z-index:100;background:rgba(4,6,22,.92);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;cursor:zoom-out;
+  }
+  .lightbox img{max-width:100%;max-height:78vh;border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.6);}
+  .lightbox .cap{margin-top:14px;text-align:center;font-size:.9rem;}
+  .lightbox .cap small{display:block;color:var(--mist);margin-top:3px;}
+  .toast{
+    position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);
+    z-index:120;max-width:92vw;padding:11px 18px;border-radius:12px;font-size:.86rem;
+    background:#1c2566;border:1px solid rgba(255,255,255,.25);
+    box-shadow:0 10px 30px rgba(0,0,0,.4);
+  }
+  .toast.err{background:#4a1d2a;border-color:var(--err);}
+
+  @media (max-width:560px){
+    .grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+    .tile img.thumb{height:120px;}
+    .toolbar .sep{display:none;}
+    .toolbar .btn{flex:1 1 auto;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================= LOGIN ======================= -->
+<div class="login" id="loginView" hidden>
+  <div class="panel">
+    <span class="kicker">Pimpri Chinchwad Science Park · Private</span>
+    <h1>Astro-fest — <em>Admin</em></h1>
+    <div id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false">
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <button class="btn primary" id="loginBtn" type="button">Sign in</button>
+      <div class="msg" id="loginMsg" role="alert"></div>
+      <button class="linkbtn" id="resetBtn" type="button">Forgot password? Email me a reset link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= APP ======================= -->
+<div class="wrap" id="appView" hidden>
+  <div class="top">
+    <div>
+      <span class="kicker">Pimpri Chinchwad Science Park · Private</span>
+      <h1>Astro-fest — <em>Admin</em></h1>
+    </div>
+    <div>
+      <div class="who" id="whoAmI"></div>
+      <div class="actions">
+        <button class="btn" id="refreshBtn" type="button">↻ Refresh</button>
+        <button class="btn" id="logoutBtn" type="button">Sign out</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="panel stat"><div class="num" id="statPhotos">–</div><div class="lbl">Photos uploaded</div></div>
+    <div class="panel stat"><div class="num" id="statUsers">–</div><div class="lbl">People who uploaded</div></div>
+    <div class="panel stat"><div class="num" id="statDays">–</div><div class="lbl">Days with uploads</div></div>
+    <div class="panel stat"><div class="num" id="statLive">–</div><div class="lbl">Shown on display now</div></div>
+  </div>
+  <p class="hint" id="statHint">Visitors don't sign in, so "people" is counted by unique name (not case-sensitive).</p>
+
+  <div class="panel displaybox">
+    <div class="row">
+      <div>
+        <div class="title">📺 What the TV display shows</div>
+        <div class="state" id="displayState">Loading…</div>
+      </div>
+    </div>
+    <div class="btns">
+      <button class="btn primary" id="dispOnlyBtn" type="button" disabled>Show only selected</button>
+      <button class="btn" id="dispAddBtn" type="button" disabled>+ Add selected</button>
+      <button class="btn" id="dispRemoveBtn" type="button" disabled>– Remove selected</button>
+      <button class="btn" id="dispTodayBtn" type="button">📅 Always show today</button>
+      <button class="btn" id="dispLast48Btn" type="button">🕒 Last 48 hours</button>
+      <button class="btn" id="dispAllBtn" type="button">Show all photos</button>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <span class="count" id="selCount">0 selected</span>
+    <button class="btn" id="selAllBtn" type="button">Select all</button>
+    <button class="btn" id="selNoneBtn" type="button" disabled>Clear</button>
+    <span class="sep"></span>
+    <button class="btn" id="zipBtn" type="button" disabled>⬇ Download selected (ZIP)</button>
+    <button class="btn danger" id="delBtn" type="button" disabled>🗑 Delete selected</button>
+  </div>
+
+  <div id="groups"></div>
+  <div class="empty" id="emptyMsg" hidden>No photos uploaded yet.</div>
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <img id="lbImg" alt="">
+  <div class="cap" id="lbCap"></div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  'use strict';
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
+  const PHOTOS   = db.collection(COLLECTION_NAME);
+  const SETTINGS = db.collection('settings').doc('display');
+
+  const $ = (id) => document.getElementById(id);
+  const loginView = $('loginView'), appView = $('appView');
+  const groupsEl = $('groups'), emptyMsg = $('emptyMsg');
+
+  let photos = [];                       // [{id,name,location,image,date}]
+  let byId = new Map();
+  let selected = new Set();
+  let display = { mode:DEFAULT_MODE, ids:[], day:'' };  // mirrors settings/display
+  let unsubSettings = null;
+  let flashMsg = '';
+
+  const IMG_OK = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+\/=]+$/;
+
+  /* ---------------- small helpers ---------------- */
+  function el(tag, cls, text){
+    const e = document.createElement(tag);
+    if(cls) e.className = cls;
+    if(text != null) e.textContent = text;
+    return e;
+  }
+  let toastTimer = null;
+  function toast(msg, isErr){
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast' + (isErr ? ' err' : '');
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, isErr ? 6000 : 2800);
+  }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function dayKey(d){ return d ? d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()) : 'unknown'; }
+  function dayLabel(d){
+    return d ? d.toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long', year:'numeric'}) : 'Unknown date';
+  }
+  function timeLabel(d){ return d ? d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—'; }
+  function plural(n, one, many){ return n + ' ' + (n === 1 ? one : many); }
+  function friendlyError(e){
+    if(e && e.code === 'permission-denied')
+      return "Not allowed — check the Firestore rules and that your Admin UID is correct.";
+    return (e && e.message) ? e.message : 'Something went wrong.';
+  }
+
+  /* ---------------- AUTH ---------------- */
+  function showLogin(){
+    appView.hidden = true;
+    loginView.hidden = false;
+    if(unsubSettings){ unsubSettings(); unsubSettings = null; }
+    if(typeof unsubPhotos !== 'undefined' && unsubPhotos){ unsubPhotos(); unsubPhotos = null; }
+    photos = []; byId = new Map(); selected = new Set();
+    groupsEl.textContent = '';
+    const m = $('loginMsg');
+    if(flashMsg){ m.textContent = flashMsg; m.className = 'msg err'; flashMsg = ''; }
+  }
+
+  function adminConfigured(){
+    return ADMIN_EMAIL && ADMIN_EMAIL.indexOf('PASTE') === -1;
+  }
+
+  auth.onAuthStateChanged((user) => {
+    if(!user){ showLogin(); return; }
+    // Fail closed: wrong account (or ADMIN_EMAIL not set) = straight back out.
+    if(!adminConfigured()){
+      flashMsg = 'Admin email is not set in admin.html yet.';
+      auth.signOut(); return;
+    }
+    if((user.email || '').toLowerCase() !== ADMIN_EMAIL.toLowerCase()){
+      flashMsg = 'This account is not allowed to use the admin page.';
+      auth.signOut(); return;
+    }
+    loginView.hidden = true;
+    appView.hidden = false;
+    $('whoAmI').textContent = 'Signed in as ' + user.email;
+    startApp();
+  });
+
+  function authMessage(e){
+    switch(e && e.code){
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found':
+      case 'auth/invalid-email': return 'Wrong email or password.';
+      case 'auth/too-many-requests': return 'Too many attempts. Please wait a few minutes and try again.';
+      case 'auth/network-request-failed': return 'No internet connection.';
+      case 'auth/user-disabled': return 'This account has been disabled.';
+      default: return 'Could not sign in. Please try again.';
+    }
+  }
+
+  async function doLogin(){
+    const email = $('email').value.trim(), pw = $('password').value;
+    const m = $('loginMsg'), b = $('loginBtn');
+    if(!email || !pw){ m.textContent = 'Enter your email and password.'; m.className = 'msg err'; return; }
+    b.disabled = true; b.textContent = 'Signing in…'; m.textContent = '';
+    try{
+      await auth.signInWithEmailAndPassword(email, pw);
+      $('password').value = '';
+    }catch(e){
+      m.textContent = authMessage(e); m.className = 'msg err';
+    }finally{
+      b.disabled = false; b.textContent = 'Sign in';
+    }
+  }
+  $('loginBtn').addEventListener('click', doLogin);
+  ['email','password'].forEach(id => $(id).addEventListener('keydown', (e) => { if(e.key === 'Enter') doLogin(); }));
+
+  $('resetBtn').addEventListener('click', async () => {
+    const email = $('email').value.trim(), m = $('loginMsg');
+    if(!email){ m.textContent = 'Type your email above first, then tap this again.'; m.className = 'msg err'; return; }
+    try{ await auth.sendPasswordResetEmail(email); }catch(e){ /* same message either way */ }
+    m.textContent = 'If that email is registered, a reset link is on its way.'; m.className = 'msg ok';
+  });
+  $('logoutBtn').addEventListener('click', () => auth.signOut());
+
+  /* ---------------- LOAD DATA ---------------- */
+  function startApp(){
+    if(unsubSettings) unsubSettings();
+    unsubSettings = SETTINGS.onSnapshot((doc) => {
+      const d = doc.exists ? doc.data() : {};
+      const dd = (typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day)) ? d.day : '';
+      let md = ['all','selected','day','today','last48'].includes(d.mode) ? d.mode : DEFAULT_MODE;
+      if(md === 'day' && !dd) md = DEFAULT_MODE;
+      display = { mode: md, ids: Array.isArray(d.ids) ? d.ids : [], day: dd };
+      refreshDisplayUI();
+    }, (e) => toast('Could not read display settings: ' + friendlyError(e), true));
+    loadPhotos();
+  }
+
+  let unsubPhotos = null;
+
+  // Live listener: the page updates by itself whenever a photo is added or deleted.
+  function loadPhotos(){
+    if(unsubPhotos){ unsubPhotos(); unsubPhotos = null; }
+    unsubPhotos = PHOTOS.orderBy('createdAt','desc').limit(MAX_LOAD).onSnapshot((snap) => {
+      photos = snap.docs.map((d) => {
+        const p = d.data();
+        return {
+          id: d.id,
+          name: String(p.name || '').trim(),
+          location: String(p.location || '').trim(),
+          image: (typeof p.image === 'string' && IMG_OK.test(p.image)) ? p.image : '',
+          date: (p.createdAt && p.createdAt.toDate) ? p.createdAt.toDate() : null
+        };
+      });
+      byId = new Map(photos.map(p => [p.id, p]));
+      selected = new Set([...selected].filter(id => byId.has(id)));
+      render();
+      $('statHint').textContent = photos.length >= MAX_LOAD
+        ? 'Showing the newest ' + MAX_LOAD + ' photos. Delete old ones to see earlier uploads. People are counted by unique name.'
+        : "Visitors don't sign in, so \"people\" is counted by unique name (not case-sensitive).";
+    }, (e) => toast('Could not load photos: ' + friendlyError(e), true));
+  }
+  $('refreshBtn').addEventListener('click', loadPhotos);
+
+  /* ---------------- RENDER ---------------- */
+  function groupByDay(){
+    const map = new Map();
+    photos.forEach((p) => {
+      const k = dayKey(p.date);
+      if(!map.has(k)) map.set(k, { key:k, label:dayLabel(p.date), items:[] });
+      map.get(k).items.push(p);
+    });
+    return [...map.values()];
+  }
+
+  function render(){
+    groupsEl.textContent = '';
+    const groups = groupByDay();
+    emptyMsg.hidden = photos.length > 0;
+
+    groups.forEach((g) => {
+      const sec = el('section','day'); sec.dataset.day = g.key;
+
+      const head = el('div','dayhead');
+      const chkLabel = el('label','chk');
+      const dayChk = el('input'); dayChk.type = 'checkbox'; dayChk.className = 'daychk'; dayChk.dataset.day = g.key;
+      dayChk.setAttribute('aria-label','Select all photos from ' + g.label);
+      chkLabel.append(dayChk, el('span','daytitle', g.label));
+      head.append(chkLabel, el('span','daycount', plural(g.items.length,'photo','photos')));
+
+      const acts = el('div','dayactions');
+      [['dl-day','⬇ Download day'],['show-day','📺 Show this day live'],['disp-day','+ Add day (fixed list)']].forEach(([act, txt]) => {
+        const b = el('button','btn small', txt); b.type = 'button'; b.dataset.act = act; b.dataset.day = g.key;
+        acts.append(b);
+      });
+      head.append(acts);
+      sec.append(head);
+
+      const grid = el('div','grid');
+      g.items.forEach((p) => grid.append(buildTile(p)));
+      sec.append(grid);
+      groupsEl.append(sec);
+    });
+
+    $('statPhotos').textContent = photos.length;
+    $('statUsers').textContent = new Set(photos.map(p => (p.name || '(no name)').toLowerCase())).size;
+    $('statDays').textContent = groups.filter(g => g.key !== 'unknown').length;
+    refreshDisplayUI();
+    refreshSelectionUI();
+  }
+
+  function buildTile(p){
+    const t = el('div','tile'); t.dataset.id = p.id;
+
+    const pick = el('label','pick');
+    const c = el('input'); c.type = 'checkbox'; c.className = 'pickchk';
+    c.setAttribute('aria-label','Select photo by ' + (p.name || 'unknown'));
+    pick.append(c);
+
+    const badge = el('span','badge','On display'); badge.hidden = true;
+
+    const img = el('img','thumb'); img.loading = 'lazy'; img.alt = 'Photo by ' + (p.name || 'a visitor');
+    if(p.image) img.src = p.image;
+
+    const body = el('div','body');
+    body.append(el('div','name', p.name || 'Unknown'));
+    body.append(el('div','loc', p.location || '—'));
+    body.append(el('div','time', timeLabel(p.date)));
+
+    const acts = el('div','acts');
+    const dl = el('button','btn small','⬇ Save'); dl.type = 'button'; dl.dataset.act = 'dl';
+    const del = el('button','btn small danger','🗑 Delete'); del.type = 'button'; del.dataset.act = 'del';
+    acts.append(dl, del);
+    body.append(acts);
+
+    t.append(pick, badge, img, body);
+    return t;
+  }
+
+  /* ---------------- SELECTION UI ---------------- */
+  function refreshSelectionUI(){
+    document.querySelectorAll('.tile').forEach((t) => {
+      const on = selected.has(t.dataset.id);
+      t.classList.toggle('selected', on);
+      t.querySelector('.pickchk').checked = on;
+    });
+    document.querySelectorAll('.day').forEach((sec) => {
+      const tiles = [...sec.querySelectorAll('.tile')];
+      const n = tiles.filter(t => selected.has(t.dataset.id)).length;
+      const c = sec.querySelector('.daychk');
+      c.checked = n > 0 && n === tiles.length;
+      c.indeterminate = n > 0 && n < tiles.length;
+    });
+    const n = selected.size;
+    $('selCount').textContent = n + ' selected';
+    ['zipBtn','delBtn','selNoneBtn','dispOnlyBtn','dispAddBtn','dispRemoveBtn'].forEach(id => { $(id).disabled = n === 0; });
+    $('selAllBtn').textContent = (photos.length && n === photos.length) ? 'All selected' : 'Select all';
+  }
+
+  groupsEl.addEventListener('change', (e) => {
+    const t = e.target;
+    if(t.classList.contains('pickchk')){
+      const id = t.closest('.tile').dataset.id;
+      t.checked ? selected.add(id) : selected.delete(id);
+      refreshSelectionUI();
+    }else if(t.classList.contains('daychk')){
+      photosOfDay(t.dataset.day).forEach(p => { t.checked ? selected.add(p.id) : selected.delete(p.id); });
+      refreshSelectionUI();
+    }
+  });
+  $('selAllBtn').addEventListener('click', () => { photos.forEach(p => selected.add(p.id)); refreshSelectionUI(); });
+  $('selNoneBtn').addEventListener('click', () => { selected.clear(); refreshSelectionUI(); });
+
+  function photosOfDay(key){ return photos.filter(p => dayKey(p.date) === key); }
+  function selectedPhotos(){ return photos.filter(p => selected.has(p.id)); }
+
+  /* ---------------- ROW / DAY ACTIONS ---------------- */
+  groupsEl.addEventListener('click', (e) => {
+    const img = e.target.closest('img.thumb');
+    if(img){ openLightbox(byId.get(img.closest('.tile').dataset.id)); return; }
+    const b = e.target.closest('button[data-act]');
+    if(!b) return;
+    const act = b.dataset.act;
+    if(act === 'dl'){ const p = byId.get(b.closest('.tile').dataset.id); if(p) saveOne(p); }
+    else if(act === 'del'){ deletePhotos([b.closest('.tile').dataset.id]); }
+    else if(act === 'dl-day'){ const list = photosOfDay(b.dataset.day); downloadZip(list, b.dataset.day, b); }
+    else if(act === 'disp-day'){ addToDisplay(photosOfDay(b.dataset.day).map(p => p.id), 'day'); }
+    else if(act === 'show-day'){
+      if(b.dataset.day === 'unknown'){ toast('These photos have no date, so they cannot be shown by day.', true); return; }
+      setDisplay('day', [], b.dataset.day);
+    }
+  });
+
+  /* ---------------- DOWNLOAD ---------------- */
+  function extOf(p){
+    const m = /^data:image\/([a-z]+);/.exec(p.image);
+    return m ? (m[1] === 'jpeg' ? 'jpg' : m[1]) : 'jpg';
+  }
+  function fileName(p){
+    const safe = (p.name || 'visitor').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'').slice(0,24) || 'visitor';
+    const d = p.date ? dayKey(p.date) + '_' + pad(p.date.getHours()) + pad(p.date.getMinutes()) : 'undated';
+    return d + '_' + safe + '_' + p.id.slice(0,5) + '.' + extOf(p);
+  }
+  function dataUrlToBlob(url){
+    const comma = url.indexOf(',');
+    const mime = url.slice(5, url.indexOf(';'));
+    const bin = atob(url.slice(comma + 1));
+    const arr = new Uint8Array(bin.length);
+    for(let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  }
+  function saveBlob(blob, name){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+  function saveOne(p){
+    if(!p.image){ toast('This photo has no valid image data.', true); return; }
+    saveBlob(dataUrlToBlob(p.image), fileName(p));
+  }
+  function csvCell(v){
+    let s = String(v == null ? '' : v);
+    if(/^[=+\-@\t\r]/.test(s)) s = "'" + s;          // stop spreadsheet formula injection
+    return '"' + s.replace(/"/g,'""') + '"';
+  }
+  async function downloadZip(list, label, btn){
+    list = list.filter(p => p.image);
+    if(!list.length){ toast('Nothing to download.', true); return; }
+    if(!window.JSZip){ toast('The ZIP tool did not load — check your internet and refresh.', true); return; }
+    if(list.length === 1){ saveOne(list[0]); return; }
+    const old = btn ? btn.textContent : '';
+    if(btn){ btn.disabled = true; btn.textContent = 'Preparing ZIP…'; }
+    try{
+      const zip = new JSZip();
+      const rows = ['file,name,location,uploaded_at'];
+      list.forEach((p) => {
+        const fn = fileName(p);
+        zip.file(fn, p.image.slice(p.image.indexOf(',') + 1), { base64:true });
+        rows.push([fn, p.name, p.location, p.date ? p.date.toLocaleString() : ''].map(csvCell).join(','));
+      });
+      zip.file('details.csv', rows.join('\n'));
+      const blob = await zip.generateAsync({ type:'blob' });
+      saveBlob(blob, 'skywall_' + label + '_' + list.length + '_photos.zip');
+      toast('Downloaded ' + plural(list.length,'photo','photos') + '.');
+    }catch(e){
+      toast('ZIP failed: ' + friendlyError(e), true);
+    }finally{
+      if(btn){ btn.disabled = false; btn.textContent = old; refreshSelectionUI(); }
+    }
+  }
+  $('zipBtn').addEventListener('click', (e) => downloadZip(selectedPhotos(), 'selected', e.currentTarget));
+
+  /* ---------------- DELETE ---------------- */
+  async function deletePhotos(ids){
+    ids = ids.filter(id => byId.has(id));
+    if(!ids.length) return;
+    const msg = ids.length === 1
+      ? 'Delete this photo permanently? This cannot be undone.'
+      : 'Delete ' + ids.length + ' photos permanently? This cannot be undone.';
+    if(!confirm(msg)) return;
+    try{
+      for(let i = 0; i < ids.length; i += 400){
+        const batch = db.batch();
+        ids.slice(i, i + 400).forEach(id => batch.delete(PHOTOS.doc(id)));
+        await batch.commit();
+      }
+      const gone = new Set(ids);
+      photos = photos.filter(p => !gone.has(p.id));
+      byId = new Map(photos.map(p => [p.id, p]));
+      ids.forEach(id => selected.delete(id));
+      // keep the display list tidy
+      if(display.mode === 'selected'){
+        const keep = display.ids.filter(id => !gone.has(id));
+        if(keep.length !== display.ids.length) await saveDisplay('selected', keep, true);
+      }
+      render();
+      toast('Deleted ' + plural(ids.length,'photo','photos') + '.');
+    }catch(e){
+      toast('Delete failed: ' + friendlyError(e), true);
+    }
+  }
+  $('delBtn').addEventListener('click', () => deletePhotos([...selected]));
+
+  /* ---------------- DISPLAY CONTROL ---------------- */
+  async function saveDisplay(mode, ids, quiet, day){
+    await SETTINGS.set({ mode: mode, ids: ids, day: day || '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    if(quiet) return;
+    if(mode === 'all') toast('Display now shows all photos.');
+    else if(mode === 'today') toast('Display now always shows today\'s photos.');
+    else if(mode === 'last48') toast('Display now shows the last 48 hours — new uploads appear automatically.');
+    else if(mode === 'day') toast('Display now shows ' + day + ' live — new uploads that day appear automatically.');
+    else toast('Display updated — ' + plural(ids.length,'photo','photos') + ' on the wall.');
+  }
+  function todayKey(){ return dayKey(new Date()); }
+  function onDisplay(p){
+    if(display.mode === 'all') return true;
+    if(display.mode === 'selected') return display.ids.indexOf(p.id) !== -1;
+    if(display.mode === 'day') return dayKey(p.date) === display.day;
+    if(display.mode === 'last48') return !!p.date && (Date.now() - p.date.getTime()) <= 48 * 3600 * 1000;
+    return dayKey(p.date) === todayKey();
+  }
+  function currentDisplaySet(){
+    if(display.mode === 'selected') return new Set(display.ids);
+    return new Set(photos.filter(onDisplay).map(p => p.id));
+  }
+  async function setDisplay(mode, ids, day){
+    try{ await saveDisplay(mode, ids, false, day); }
+    catch(e){ toast('Could not update display: ' + friendlyError(e), true); }
+  }
+  function addToDisplay(ids){
+    const s = currentDisplaySet(); ids.forEach(id => s.add(id));
+    setDisplay('selected', [...s]);
+  }
+  $('dispOnlyBtn').addEventListener('click', () => setDisplay('selected', [...selected]));
+  $('dispAddBtn').addEventListener('click', () => addToDisplay([...selected]));
+  $('dispRemoveBtn').addEventListener('click', () => {
+    const s = currentDisplaySet(); selected.forEach(id => s.delete(id));
+    if(s.size === 0 && !confirm('This leaves the TV with no photos to show. Continue?')) return;
+    setDisplay('selected', [...s]);
+  });
+  $('dispAllBtn').addEventListener('click', () => setDisplay('all', []));
+  $('dispTodayBtn').addEventListener('click', () => setDisplay('today', []));
+  $('dispLast48Btn').addEventListener('click', () => setDisplay('last48', []));
+
+  function refreshDisplayUI(){
+    const st = $('displayState');
+    st.textContent = '';
+    if(display.mode === 'all'){
+      st.append('The TV is showing ', el('b', null, 'every photo'), ' (newest first, live).');
+    }else if(display.mode === 'today'){
+      st.append('The TV is ', el('b', null, 'always showing today\'s photos'), ' — new uploads appear automatically, and it switches to the new date at midnight.');
+    }else if(display.mode === 'last48'){
+      st.append('The TV is showing ', el('b', null, 'the last 48 hours'), ' — new uploads appear automatically, and photos older than 48 hours drop off by themselves.');
+    }else if(display.mode === 'day'){
+      const sample = photos.find(p => dayKey(p.date) === display.day);
+      st.append('The TV is showing ', el('b', null, sample ? dayLabel(sample.date) : display.day), ' live — new uploads on that day appear automatically.');
+    }else{
+      const live = photos.filter(p => display.ids.indexOf(p.id) !== -1).length;
+      st.append('The TV is showing ', el('b', null, 'only your selected photos'), ' — ' + plural(live || display.ids.length,'photo','photos') + '. New uploads will not appear until you add them.');
+    }
+    $('statLive').textContent = photos.filter(onDisplay).length;
+    $('dispAllBtn').disabled = display.mode === 'all';
+    $('dispTodayBtn').disabled = display.mode === 'today';
+    $('dispLast48Btn').disabled = display.mode === 'last48';
+    document.querySelectorAll('.tile').forEach((t) => {
+      const p = byId.get(t.dataset.id);
+      t.querySelector('.badge').hidden = !(display.mode !== 'all' && p && onDisplay(p));
+    });
+    document.querySelectorAll('button[data-act="show-day"]').forEach((b) => {
+      const on = (display.mode === 'day' && display.day === b.dataset.day) ||
+                 (display.mode === 'today' && b.dataset.day === todayKey());
+      b.disabled = on;
+      b.textContent = on ? '✓ Showing live' : '📺 Show this day live';
+    });
+  }
+
+  /* ---------------- LIGHTBOX ---------------- */
+  function openLightbox(p){
+    if(!p || !p.image) return;
+    $('lbImg').src = p.image;
+    const cap = $('lbCap'); cap.textContent = '';
+    cap.append(document.createTextNode(p.name || 'Unknown'));
+    cap.append(el('small', null, [p.location, p.date ? p.date.toLocaleString() : ''].filter(Boolean).join(' · ')));
+    $('lightbox').hidden = false;
+  }
+  function closeLightbox(){ $('lightbox').hidden = true; $('lbImg').removeAttribute('src'); }
+  $('lightbox').addEventListener('click', closeLightbox);
+  document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeLightbox(); });
+})();
+</script>
+</body>
+</html>
