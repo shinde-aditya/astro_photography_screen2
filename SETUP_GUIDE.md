@@ -24,7 +24,7 @@ Total cost: ₹0. No staff needed once it's running. Takes about 15–20 minutes
        match /skyPhotos/{photo} {
          allow read: if true;
          allow create: if request.resource.data.image is string
-                       && request.resource.data.image.size() < 900000
+                       && request.resource.data.image.size() < 1000000
                        && request.resource.data.name is string
                        && request.resource.data.name.size() < 50
                        && request.resource.data.location is string
